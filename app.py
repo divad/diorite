@@ -41,6 +41,8 @@ def getcert_user():
 		## try to clean the cert but fail silently if it doesnt work
 		sysexec(PUPPET_BINARY + " cert clean " + hostname,shell=True)
 
+		syslog.syslog("generating new puppet certificate for " + hostname)
+
 		## puppet generate a new cert
 		(rcode, stdout, stderr) = sysexec(PUPPET_BINARY + " cert generate " + hostname,shell=True)	
 
@@ -49,6 +51,8 @@ def getcert_user():
 			syslog.syslog("stdout: " + str(stdout))
 			syslog.syslog("stderr: " + str(stderr))
 			abort(500)
+	else:
+		syslog.syslog("deploying existing puppet certificate for " + hostname)
 
 	## get a dict ready for json return
 	data = {}
