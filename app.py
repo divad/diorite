@@ -5,6 +5,7 @@ import subprocess
 import ldap
 import syslog
 import re
+import os.path
 
 PUPPET_BINARY       = '/usr/local/bin/puppet'
 PUPPET_SSL_ROOT     = '/etc/puppetlabs/puppet/ssl/'
@@ -30,28 +31,29 @@ def getcert_user():
 	if not is_valid_hostname(hostname):
 		abort(400)
 
-	## puppet clean the existing cert if any
-	(rcode, stdout, stderr) = sysexec(PUPPET_BINARY + " cert clean " + hostname,shell=True)
+	## do all the files already exist for this cert name?
+	if not all([os.path.exists(PUPPET_SSL_ROOT + "private_keys/" + hostname + ".pem"),
+			os.path.exists(PUPPET_SSL_ROOT + "public_keys/"  + hostname + ".pem"),
+			os.path.exists(PUPPET_SSL_ROOT + "ca/signed/"    + hostname + ".pem")]):
 
-	if rcode != 0:
-		syslog.syslog("puppet cert clean failed for hostname " + hostname)
-		syslog.syslog("stdout: " + str(stdout))
-		syslog.syslog("stderr: " + str(stderr))
-		abort(500)
+		## They don't, so clean and generate
 
-	## puppet generate
-	(rcode, stdout, stderr) = sysexec(PUPPET_BINARY + " cert generate " + hostname,shell=True)	
+		## try to clean the cert but fail silently if it doesnt work
+		sysexec(PUPPET_BINARY + " cert clean " + hostname,shell=True)
 
-	if rcode != 0:
-		syslog.syslog("puppet cert generate failed for hostname " + hostname)
-		syslog.syslog("stdout: " + str(stdout))
-		syslog.syslog("stderr: " + str(stderr))
-		abort(500)
+		## puppet generate a new cert
+		(rcode, stdout, stderr) = sysexec(PUPPET_BINARY + " cert generate " + hostname,shell=True)	
+
+		if rcode != 0:
+			syslog.syslog("puppet cert generate failed for hostname " + hostname)
+			syslog.syslog("stdout: " + str(stdout))
+			syslog.syslog("stderr: " + str(stderr))
+			abort(500)
 
 	## get a dict ready for json return
 	data = {}
 
-	## grab the contents of the generated files
+	## grab the contents of the files the client needs
 	try:
 		with open(PUPPET_SSL_ROOT + "public_keys/" + hostname + ".pem","r") as f:
 			data['public_key'] = f.read()
@@ -61,7 +63,7 @@ def getcert_user():
 		abort(500)	
 
 	try:
-		with open(PUPPET_SSL_ROOT + "certs/" + hostname + ".pem","r") as f:
+		with open(PUPPET_SSL_ROOT + "ca/signed/" + hostname + ".pem","r") as f:
 			data['cert'] = f.read()
 	except Exception as ex:
 		syslog.syslog("failed to read generated certificate file for " + hostname)
