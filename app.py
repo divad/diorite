@@ -39,7 +39,10 @@ def getcert_user():
 		## They don't, so clean and generate
 
 		## try to clean the cert but fail silently if it doesnt work
+		# trying a lot of different methods  cos, you know, puppet sucks. # http://superuser.com/questions/784471/how-to-reject-certificate-request-on-puppet-master
 		sysexec(PUPPET_BINARY + " cert clean " + hostname,shell=True)
+		sysexec(PUPPET_BINARY + " cert destroy " + hostname,shell=True)
+		sysexec(PUPPET_BINARY + " ca destroy " + hostname,shell=True)
 
 		syslog.syslog("generating new puppet certificate for " + hostname)
 
