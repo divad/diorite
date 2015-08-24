@@ -6,12 +6,14 @@ import ldap
 import syslog
 import re
 import os.path
+import grp
 
 PUPPET_BINARY       = '/usr/local/bin/puppet'
 PUPPET_SSL_ROOT     = '/etc/puppetlabs/puppet/ssl/'
 LDAP_URI            = "ldaps://nlbldap.soton.ac.uk"
 LDAP_SEARCH_BASE    = 'dc=soton,dc=ac,dc=uk'
 LDAP_USER_ATTRIBUTE = 'cn'
+ACCESS_GROUP        = 'srvadm'
 
 app = Flask(__name__)
 app.debug = True
@@ -22,12 +24,15 @@ def getcert_user():
 	username = request.form['username']
 	password = request.form['password']
 
-	## auth
+	## authentication 
 	if not auth_user(username,password):
 		abort(403)
 
+	# authorisation
+	if not allowed_user(username):
+		abort(403)
+
 	## validate the certname 
-	# TODO - more validation?
 	if not is_valid_hostname(hostname):
 		abort(400)
 
@@ -165,6 +170,19 @@ def auth_user(username,password):
 	## Catch all return false for LDAP auth
 	syslog.syslog("catchall")
 	return False
+
+def allowed_user(username):
+	try:
+		agrp = grp.getgrnam(ACCESS_GROUP)
+	except KeyError as ex:
+		syslog.syslog("could not find access group " + ACCESS_GROUP)
+		return False
+
+	if username in agrp.gr_mem:
+		return True
+	else:
+		return False
+	
 
 def is_valid_hostname(hostname):
 	if len(hostname) > 255:
