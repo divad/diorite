@@ -36,6 +36,8 @@ def getcert_user():
 	if not is_valid_hostname(hostname):
 		abort(400)
 
+	syslog.syslog("certificate request for " + hostname + " from authorised user " + username)
+
 	## do all the files already exist for this cert name?
 	if not all([os.path.exists(PUPPET_SSL_ROOT + "private_keys/" + hostname + ".pem"),
 			os.path.exists(PUPPET_SSL_ROOT + "public_keys/"  + hostname + ".pem"),
@@ -179,8 +181,10 @@ def allowed_user(username):
 		return False
 
 	if username in agrp.gr_mem:
+		syslog.syslog("granting access to authorised user " + username)
 		return True
 	else:
+		syslog.syslog("denying access to non-authorised user " + username)
 		return False
 	
 
