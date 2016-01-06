@@ -8,7 +8,7 @@ import re
 import os.path
 import grp
 
-PUPPET_BINARY       = '/usr/local/bin/puppet'
+PUPPET_BINARY       = '/opt/puppetlabs/bin/puppet'
 PUPPET_SSL_ROOT     = '/etc/puppetlabs/puppet/ssl/'
 LDAP_URI            = "ldaps://nlbldap.soton.ac.uk"
 LDAP_SEARCH_BASE    = 'dc=soton,dc=ac,dc=uk'
