@@ -9,6 +9,7 @@ import os.path
 import grp
 
 PUPPET_BINARY       = '/opt/puppetlabs/bin/puppet'
+PUPPET_CONFDIR      = '/etc/puppetlabs/puppet/'
 PUPPET_SSL_ROOT     = '/etc/puppetlabs/puppet/ssl/'
 LDAP_URI            = "ldaps://nlbldap.soton.ac.uk"
 LDAP_SEARCH_BASE    = 'dc=soton,dc=ac,dc=uk'
@@ -47,14 +48,14 @@ def getcert_user():
 
 		## try to clean the cert but fail silently if it doesnt work
 		# trying a lot of different methods  cos, you know, puppet sucks. # http://superuser.com/questions/784471/how-to-reject-certificate-request-on-puppet-master
-		sysexec(PUPPET_BINARY + " cert clean " + hostname,shell=True)
-		sysexec(PUPPET_BINARY + " cert destroy " + hostname,shell=True)
-		sysexec(PUPPET_BINARY + " ca destroy " + hostname,shell=True)
+		sysexec(PUPPET_BINARY + " cert --confdir " + PUPPET_CONFDIR + " clean " + hostname,shell=True)
+		sysexec(PUPPET_BINARY + " cert --confdir " + PUPPET_CONFDIR + " destroy " + hostname,shell=True)
+		sysexec(PUPPET_BINARY + " ca --confdir " + PUPPET_CONFDIR + " destroy " + hostname,shell=True)
 
 		syslog.syslog("generating new puppet certificate for " + hostname)
 
 		## puppet generate a new cert
-		(rcode, stdout, stderr) = sysexec(PUPPET_BINARY + " cert generate " + hostname,shell=True)	
+		(rcode, stdout, stderr) = sysexec(PUPPET_BINARY + " cert --confdir " + PUPPET_CONFDIR + " generate " + hostname,shell=True)	
 
 		if rcode != 0:
 			syslog.syslog("puppet cert generate failed for hostname " + hostname)
