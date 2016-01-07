@@ -128,7 +128,7 @@ def getcert(hostname,ident):
 		config.read(OPTIONS_FILE)
 
 		## See if the config file has a section matching the supplied ident
-		if config.has_option(ident):
+		if config.has_section(ident):
 
 			options = config.options('DEFAULT')
 			for opt in options:
