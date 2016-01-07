@@ -2,7 +2,7 @@
 
 import requests
 
-DIORITE_URL           = 'https://judy.puppet.soton.ac.uk::5000/getcert/user'
+DIORITE_URL           = 'https://judy.puppet.soton.ac.uk:5000/getcert/user'
 DIORITE_SSL_CA_FILE   = '/etc/puppetlabs/puppet/ssl/certs/ca.pem'
 USERNAME              = 'user'
 PASSWORD              = 'pass'
