@@ -11,3 +11,6 @@ IDENT                 = 'el7s'
 
 payload = {'hostname': HOSTNAME, 'username': USERNAME, 'password': PASSWORD, 'ident': IDENT}
 r = requests.post(DIORITE_URL, data=payload, verify = DIORITE_SSL_CA_FILE)
+
+print r.status_code
+print r.json()
