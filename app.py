@@ -130,18 +130,13 @@ def getcert(hostname,ident):
 		## See if the config file has a section matching the supplied ident
 		if config.has_section(ident):
 
-			options = config.options('DEFAULT')
-			for opt in options:
-				# Don't overwrite puppet cert data
-				if opt not in ['public_key','cert','private_key']:
-					data[opt] = config.get('DEFAULT',opt)
-
 			## It does! So load in the data to send to the client.
 			options = config.options(ident)
 			for opt in options:
 				# Don't overwrite puppet cert data
 				if opt not in ['public_key','cert','private_key']:
 					data[opt] = config.get(ident,opt)
+
 	except Exception as ex:
 		syslog.syslog("warning: error loading options for client " + hostname)
 		syslog.syslog(str(ex))
