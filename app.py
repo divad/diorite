@@ -7,6 +7,7 @@ import syslog
 import re
 import os.path
 import grp
+import ConfigParser
 
 PUPPET_BINARY       = '/opt/puppetlabs/bin/puppet'
 PUPPET_CONFDIR      = '/etc/puppetlabs/puppet/'
@@ -15,6 +16,7 @@ LDAP_URI            = "ldaps://nlbldap.soton.ac.uk"
 LDAP_SEARCH_BASE    = 'dc=soton,dc=ac,dc=uk'
 LDAP_USER_ATTRIBUTE = 'cn'
 ACCESS_GROUP        = 'srvadm'
+OPTIONS_FILE        = '/data/diorite/options.conf'
 
 app = Flask(__name__)
 app.debug = True
@@ -24,6 +26,7 @@ def getcert_user():
 	hostname = request.form['hostname']
 	username = request.form['username']
 	password = request.form['password']
+	ident    = request.form.get('ident','none')
 
 	## authentication 
 	if not auth_user(username,password):
@@ -33,18 +36,44 @@ def getcert_user():
 	if not allowed_user(username):
 		abort(403)
 
+	syslog.syslog("received certificate request for " + hostname + " from authorised user " + username)
+
+	return getcert(hostname,ident)
+
+@app.route('/getcert/vuuid', methods=['POST'])
+def getcert_vuuid():
+	## Get a cert by passing in the VMware UUID
+
+	hostname = request.form['hostname']
+	uuid     = request.form['uuid']
+	ident    = request.form.get('ident','none')
+
+	## TODO authenticate the UUID
+	abort(501)
+
+	## TODO authorise the UUID - e.g. check its hostname agains the hostname we got a request for
+
+	return getcert(hostname,ident)
+
+@app.route('/')
+def default():
+	abort(400)
+
+@app.before_request
+def before_request():
+	syslog.openlog("diorite")
+
+def getcert(hostname,ident):
 	## validate the certname 
 	if not is_valid_hostname(hostname):
 		abort(400)
-
-	syslog.syslog("certificate request for " + hostname + " from authorised user " + username)
 
 	## do all the files already exist for this cert name?
 	if not all([os.path.exists(PUPPET_SSL_ROOT + "private_keys/" + hostname + ".pem"),
 			os.path.exists(PUPPET_SSL_ROOT + "public_keys/"  + hostname + ".pem"),
 			os.path.exists(PUPPET_SSL_ROOT + "ca/signed/"    + hostname + ".pem")]):
 
-		## They don't, so clean and generate
+		## They don't exist, so clean and generate
 
 		## try to clean the cert but fail silently if it doesnt work
 		# trying a lot of different methods  cos, you know, puppet sucks. # http://superuser.com/questions/784471/how-to-reject-certificate-request-on-puppet-master
@@ -75,7 +104,7 @@ def getcert_user():
 	except Exception as ex:
 		syslog.syslog("failed to read generated public key file for " + hostname)
 		syslog.syslog(str(ex))
-		abort(500)	
+		abort(500)
 
 	try:
 		with open(PUPPET_SSL_ROOT + "ca/signed/" + hostname + ".pem","r") as f:
@@ -93,24 +122,32 @@ def getcert_user():
 		syslog.syslog(str(ex))
 		abort(500)
 
+	## Load in options from the options file. We silently fail here if something goes wrong.
+	try:
+		config = ConfigParser.RawConfigParser()
+		config.read(OPTIONS_FILE)
+
+		## See if the config file has a section matching the supplied ident
+		if config.has_option(ident):
+
+			options = config.options('DEFAULT')
+			for opt in options:
+				# Don't overwrite puppet cert data
+				if opt not in ['public_key','cert','private_key']:
+					data[opt] = config.get('DEFAULT',opt)
+
+			## It does! So load in the data to send to the client.
+			options = config.options(ident)
+			for opt in options:
+				# Don't overwrite puppet cert data
+				if opt not in ['public_key','cert','private_key']:
+					data[opt] = config.get(ident,opt)
+	except Exception as ex:
+		syslog.syslog("warning: error loading options for client " + hostname)
+		syslog.syslog(str(ex))
+
 	## send results back as json
 	return jsonify(data)
-
-@app.route('/getcert/psk', methods=['POST'])
-def getcert_psk():
-	pass
-
-@app.route('/getcert/mid', methods=['POST'])
-def getcert_machineid():
-	pass
-
-@app.route('/')
-def default():
-	abort(400)
-
-@app.before_request
-def before_request():
-	syslog.openlog("diorite")
 
 def sysexec(command,shell=False):
 
