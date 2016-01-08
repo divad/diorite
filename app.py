@@ -1,5 +1,5 @@
 #!/usr/bin/python
-# Version 2016-01-08-06
+# Version 2016-01-08-07
 
 OPTIONS_FILE        = '/data/diorite/options.conf'
 
@@ -70,13 +70,13 @@ def before_request():
 		else:
 			## try to load diorite settings. cfg_get loads from g.config. It accepts a default if no config was found, aborts if no config option is found
 			## and no default set either.
-			g.puppet_binary       = cfg_get('puppet_binary','/opt/puppetlabs/bin/puppet')
-			g.puppet_confdir      = cfg_get('puppet_confdir','/etc/puppetlabs/puppet/')
-			g.puppet_ssldir       = cfg_get('puppet_ssldir','/etc/puppetlabs/puppet/ssl/')
-			g.ldap_uri            = cfg_get('ldap_uri')
-			g.ldap_search_base    = cfg_get('ldap_search_base')
-			g.ldap_user_attribute = cfg_get('ldap_user_attribute', 'cn')
-			g.access_group        = cfg_get('access_group','root')
+			g.puppet_binary       = cfg_get('diorite','puppet_binary','/opt/puppetlabs/bin/puppet')
+			g.puppet_confdir      = cfg_get('diorite','puppet_confdir','/etc/puppetlabs/puppet/')
+			g.puppet_ssldir       = cfg_get('diorite','puppet_ssldir','/etc/puppetlabs/puppet/ssl/')
+			g.ldap_uri            = cfg_get('diorite','ldap_uri')
+			g.ldap_search_base    = cfg_get('diorite','ldap_search_base')
+			g.ldap_user_attribute = cfg_get('diorite','ldap_user_attribute', 'cn')
+			g.access_group        = cfg_get('diorite','access_group','root')
 
 		## ENC config
 		if g.config.has_section('enc'):
