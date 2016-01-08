@@ -1,5 +1,5 @@
 #!/usr/bin/python
-# Version 2016-01-08-07
+# Version 2016-01-08-08
 
 OPTIONS_FILE        = '/data/diorite/options.conf'
 
@@ -83,11 +83,11 @@ def before_request():
 			g.enc = True
 
 			try:
-				g.enc_url        = config.get('enc', 'url')
-				g.enc_auth_token = config.get('enc', 'auth_token')
+				g.enc_url        = g.config.get('enc', 'url')
+				g.enc_auth_token = g.config.get('enc', 'auth_token')
 
-				if config.has_option('enc', 'ssl_verify'):
-					g.enc_ssl_verify = config.getboolean('enc', 'ssl_verify')
+				if g.config.has_option('enc', 'ssl_verify'):
+					g.enc_ssl_verify = g.config.getboolean('enc', 'ssl_verify')
 				else:
 					g.enc_ssl_verify = True
 
