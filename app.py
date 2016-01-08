@@ -176,18 +176,17 @@ def getcert(hostname,ident):
 		if not ident in ['diorite','enc']:
 
 			## See if the config file has a section matching the supplied ident
-			if config.has_section(ident):
+			if g.config.has_section(ident):
 
 				## It does! So load in the data to send to the client.
-				options = config.options(ident)
+				options = g.config.options(ident)
 				for opt in options:
 					# Don't overwrite puppet cert data
 					if opt not in ['public_key','cert','private_key']:
-						data[opt] = config.get(ident,opt)
+						data[opt] = g.config.get(ident,opt)
 
 	except Exception as ex:
-		syslog.syslog("warning: error loading options for client " + hostname)
-		syslog.syslog(str(ex))
+		syslog.syslog("warning: error loading options for client " + hostname + ":" + str(ex))
 
 	## send results back as json
 	return jsonify(data)
