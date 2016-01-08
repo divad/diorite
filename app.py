@@ -1,5 +1,5 @@
 #!/usr/bin/python
-# Version 2016-01-08-09
+# Version 2016-01-08-10
 
 OPTIONS_FILE        = '/data/diorite/options.conf'
 
@@ -162,10 +162,13 @@ def getcert(hostname,ident):
 	## Tell an ENC endpoint (Cortex) that a node exists and so should have a record of it
 	## but only if we've been configured to do that
 	if g.enc:
-		r = requests.post(g.enc_url + '/' + hostname, data={'auth_token': g.enc_auth_token}, verify=g.enc_ssl_verify)
+		try:
+			r = requests.post(g.enc_url + '/' + hostname, data={'auth_token': g.enc_auth_token}, verify=g.enc_ssl_verify)
 
-		if not r.return_code in [200,201]:
-			syslog.syslog("warning: error code recieved from enc registration API: " + str(r.return_code))			
+			if not r.return_code in [200,201]:
+				syslog.syslog("warning: error code recieved from enc registration API: " + str(r.return_code))		
+		except Exception as ex:
+			syslog.syslog("warning: an error occured when contacting the enc: " + str(ex))
 
 	## Load in options from the options file. We silently fail here if something goes wrong.
 	try:
