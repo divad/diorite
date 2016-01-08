@@ -1,6 +1,10 @@
 #!/usr/bin/python
+# Version 2016-01-08-06
 
-from flask import Flask, jsonify, abort, request
+OPTIONS_FILE        = '/data/diorite/options.conf'
+
+## DO NOT EDIT PAST THIS LINE #################################################
+from flask import Flask, jsonify, abort, request, g
 import subprocess
 import ldap
 import syslog
@@ -8,18 +12,9 @@ import re
 import os.path
 import grp
 import ConfigParser
-
-PUPPET_BINARY       = '/opt/puppetlabs/bin/puppet'
-PUPPET_CONFDIR      = '/etc/puppetlabs/puppet/'
-PUPPET_SSL_ROOT     = '/etc/puppetlabs/puppet/ssl/'
-LDAP_URI            = "ldaps://nlbldap.soton.ac.uk"
-LDAP_SEARCH_BASE    = 'dc=soton,dc=ac,dc=uk'
-LDAP_USER_ATTRIBUTE = 'cn'
-ACCESS_GROUP        = 'srvadm'
-OPTIONS_FILE        = '/data/diorite/options.conf'
+import requests
 
 app = Flask(__name__)
-app.debug = True
 
 @app.route('/getcert/user', methods=['POST'])
 def getcert_user():
@@ -40,7 +35,7 @@ def getcert_user():
 
 	return getcert(hostname,ident)
 
-@app.route('/getcert/vuuid', methods=['POST'])
+@app.route('/getcert/vmid', methods=['POST'])
 def getcert_vuuid():
 	## Get a cert by passing in the VMware UUID
 
@@ -63,28 +58,70 @@ def default():
 def before_request():
 	syslog.openlog("diorite")
 
+	## Load config for every request (so no reloads are required just for a config change)
+	try:
+		g.config = ConfigParser.RawConfigParser()
+		g.config.read(OPTIONS_FILE)
+
+		## Diorite config
+		if not g.config.has_section('diorite'):
+			syslog.syslog("error: [diorite] section missing from diorite options file")
+			abort(500)
+		else:
+			## try to load diorite settings. cfg_get loads from g.config. It accepts a default if no config was found, aborts if no config option is found
+			## and no default set either.
+			g.puppet_binary       = cfg_get('puppet_binary','/opt/puppetlabs/bin/puppet')
+			g.puppet_confdir      = cfg_get('puppet_confdir','/etc/puppetlabs/puppet/')
+			g.puppet_ssldir       = cfg_get('puppet_ssldir','/etc/puppetlabs/puppet/ssl/')
+			g.ldap_uri            = cfg_get('ldap_uri')
+			g.ldap_search_base    = cfg_get('ldap_search_base')
+			g.ldap_user_attribute = cfg_get('ldap_user_attribute', 'cn')
+			g.access_group        = cfg_get('access_group','root')
+
+		## ENC config
+		if g.config.has_section('enc'):
+			g.enc = True
+
+			try:
+				g.enc_url        = config.get('enc', 'url')
+				g.enc_auth_token = config.get('enc', 'auth_token')
+
+				if config.has_option('enc', 'ssl_verify'):
+					g.enc_ssl_verify = config.getboolean('enc', 'ssl_verify')
+				else:
+					g.enc_ssl_verify = True
+
+			except Exception as ex:
+				g.enc = False
+				syslog.syslog("warning: could not read enc options, disabling enc updating: " + str(ex))
+		else:
+			g.enc = False
+
+	except Exception as ex:
+		syslog.syslog("error: could not read from options file: " + str(ex))
+		abort(500)
+
+		
 def getcert(hostname,ident):
 	## validate the certname 
 	if not is_valid_hostname(hostname):
 		abort(400)
 
 	## do all the files already exist for this cert name?
-	if not all([os.path.exists(PUPPET_SSL_ROOT + "private_keys/" + hostname + ".pem"),
-			os.path.exists(PUPPET_SSL_ROOT + "public_keys/"  + hostname + ".pem"),
-			os.path.exists(PUPPET_SSL_ROOT + "ca/signed/"    + hostname + ".pem")]):
-
-		## They don't exist, so clean and generate
+	if not all([os.path.exists(g.puppet_ssldir + "private_keys/" + hostname + ".pem"),
+			os.path.exists(g.puppet_ssldir + "public_keys/"  + hostname + ".pem"),
+			os.path.exists(g.puppet_ssldir + "ca/signed/"    + hostname + ".pem")]):
 
 		## try to clean the cert but fail silently if it doesnt work
-		# trying a lot of different methods  cos, you know, puppet sucks. # http://superuser.com/questions/784471/how-to-reject-certificate-request-on-puppet-master
-		sysexec(PUPPET_BINARY + " cert --confdir " + PUPPET_CONFDIR + " clean " + hostname,shell=True)
-		sysexec(PUPPET_BINARY + " cert --confdir " + PUPPET_CONFDIR + " destroy " + hostname,shell=True)
-		sysexec(PUPPET_BINARY + " ca --confdir " + PUPPET_CONFDIR + " destroy " + hostname,shell=True)
+		# trying a lot of different methods  cos puppet sux. # http://superuser.com/questions/784471/how-to-reject-certificate-request-on-puppet-master
+		sysexec(g.puppet_binary + " cert --confdir " + g.puppet_confdir + " clean " + hostname,shell=True)
+		sysexec(g.puppet_binary + " cert --confdir " + g.puppet_confdir + " destroy " + hostname,shell=True)
+		sysexec(g.puppet_binary + " ca --confdir " + g.puppet_confdir + " destroy " + hostname,shell=True)
 
 		syslog.syslog("generating new puppet certificate for " + hostname)
 
 		## puppet generate a new cert
-		(rcode, stdout, stderr) = sysexec(PUPPET_BINARY + " cert --confdir " + PUPPET_CONFDIR + " generate " + hostname,shell=True)	
+		(rcode, stdout, stderr) = sysexec(g.puppet_binary + " cert --confdir " + g.puppet_confdir + " generate " + hostname,shell=True)	
 
 		if rcode != 0:
 			syslog.syslog("puppet cert generate failed for hostname " + hostname)
@@ -99,7 +136,7 @@ def getcert(hostname,ident):
 
 	## grab the contents of the files the client needs
 	try:
-		with open(PUPPET_SSL_ROOT + "public_keys/" + hostname + ".pem","r") as f:
+		with open(g.puppet_ssldir + "public_keys/" + hostname + ".pem","r") as f:
 			data['public_key'] = f.read()
 	except Exception as ex:
 		syslog.syslog("failed to read generated public key file for " + hostname)
@@ -107,7 +144,7 @@ def getcert(hostname,ident):
 		abort(500)
 
 	try:
-		with open(PUPPET_SSL_ROOT + "ca/signed/" + hostname + ".pem","r") as f:
+		with open(g.puppet_ssldir + "ca/signed/" + hostname + ".pem","r") as f:
 			data['cert'] = f.read()
 	except Exception as ex:
 		syslog.syslog("failed to read generated certificate file for " + hostname)
@@ -115,27 +152,35 @@ def getcert(hostname,ident):
 		abort(500)
 
 	try:
-		with open(PUPPET_SSL_ROOT + "private_keys/" + hostname + ".pem","r") as f:
+		with open(g.puppet_ssldir + "private_keys/" + hostname + ".pem","r") as f:
 			data['private_key'] = f.read()
 	except Exception as ex:
 		syslog.syslog("failed to read generated certificate file for " + hostname)
 		syslog.syslog(str(ex))
 		abort(500)
 
+	## Tell an ENC endpoint (Cortex) that a node exists and so should have a record of it
+	## but only if we've been configured to do that
+	if g.enc:
+		r = requests.post(g.enc_url + '/' + certname, data={'auth_token': g.enc_auth_token}, verify=g.enc_ssl_verify)
+
+		if not r.return_code in [200,201]:
+			syslog.syslog("warning: error code recieved from enc registration API: " + str(r.return_code))			
+
 	## Load in options from the options file. We silently fail here if something goes wrong.
 	try:
-		config = ConfigParser.RawConfigParser()
-		config.read(OPTIONS_FILE)
+		## don't allow the client to send 'diorite' and read diorite core configuration options
+		if not ident in ['diorite','enc']:
 
-		## See if the config file has a section matching the supplied ident
-		if config.has_section(ident):
+			## See if the config file has a section matching the supplied ident
+			if config.has_section(ident):
 
-			## It does! So load in the data to send to the client.
-			options = config.options(ident)
-			for opt in options:
-				# Don't overwrite puppet cert data
-				if opt not in ['public_key','cert','private_key']:
-					data[opt] = config.get(ident,opt)
+				## It does! So load in the data to send to the client.
+				options = config.options(ident)
+				for opt in options:
+					# Don't overwrite puppet cert data
+					if opt not in ['public_key','cert','private_key']:
+						data[opt] = config.get(ident,opt)
 
 	except Exception as ex:
 		syslog.syslog("warning: error loading options for client " + hostname)
@@ -163,7 +208,7 @@ def auth_user(username,password):
 		return False
 
 	## connect to LDAP and turn off referals
-	l = ldap.initialize(LDAP_URI)
+	l = ldap.initialize(g.ldap_uri)
 	l.set_option(ldap.OPT_REFERRALS, 0)
 
 	## and bind to the server with a username/password if needed in order to search for the full DN for the user who is logging in.
@@ -175,7 +220,7 @@ def auth_user(username,password):
 
 	## Now search for the user object to bind as
 	try:
-		results = l.search_s(LDAP_SEARCH_BASE, ldap.SCOPE_SUBTREE,(LDAP_USER_ATTRIBUTE) + "=" + username)
+		results = l.search_s(g.ldap_search_base, ldap.SCOPE_SUBTREE,(g.ldap_user_attribute) + "=" + username)
 	except ldap.LDAPError as e:
 		syslog.syslog("user not found")
 		return False
@@ -193,7 +238,7 @@ def auth_user(username,password):
 		else:
 			## Found the DN. Yay! Now bind with that DN and the password the user supplied
 			try:
-				lauth = ldap.initialize(LDAP_URI)
+				lauth = ldap.initialize(g.ldap_uri)
 				lauth.set_option(ldap.OPT_REFERRALS, 0)
 				lauth.simple_bind_s( (dn), (password) )
 				return True
@@ -208,9 +253,9 @@ def auth_user(username,password):
 
 def allowed_user(username):
 	try:
-		agrp = grp.getgrnam(ACCESS_GROUP)
+		agrp = grp.getgrnam(g.access_group)
 	except KeyError as ex:
-		syslog.syslog("could not find access group " + ACCESS_GROUP)
+		syslog.syslog("could not find access group " + g.access_group)
 		return False
 
 	if username in agrp.gr_mem:
@@ -229,5 +274,16 @@ def is_valid_hostname(hostname):
 	allowed = re.compile("(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
 	return all(allowed.match(x) for x in hostname.split("."))
 
+def cfg_get(section,key,default=None):
+	if g.config.has_option(section,key):
+		return g.config.get(section,key)
+	else:
+		if not default is None:
+			return default
+		else:
+			syslog.syslog("missing configuration option in section [diorite]: " + key)
+			abort(500)
+
 if __name__ == '__main__':
+	app.debug = True
 	app.run()
