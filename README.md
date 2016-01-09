@@ -1,7 +1,4 @@
 # diorite
-Authenticated puppet cert signing system
-
-# diorite
 
 __A puppet certificate authenticated signing system replacing autosign__
 
