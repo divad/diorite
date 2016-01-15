@@ -1,7 +1,8 @@
 #!/usr/bin/python
-# Version 2016-01-08-10
+# Version 2016-01-05-01
 
-OPTIONS_FILE        = '/data/diorite/options.conf'
+CONFIG_FILE        = '/data/diorite/diorite.conf'
+OPTIONS_DIR        = '/data/diorite/options/'
 
 ## DO NOT EDIT PAST THIS LINE #################################################
 from flask import Flask, jsonify, abort, request, g
@@ -13,15 +14,24 @@ import os.path
 import grp
 import ConfigParser
 import requests
+import yaml
 
 app = Flask(__name__)
+
+################################################################################
+
+@app.route('/')
+def default():
+	abort(400)
+
+################################################################################
 
 @app.route('/getcert/user', methods=['POST'])
 def getcert_user():
 	hostname = request.form['hostname']
 	username = request.form['username']
 	password = request.form['password']
-	ident    = request.form.get('ident','none')
+	ident    = request.form.get('ident','default')
 
 	## authentication 
 	if not auth_user(username,password):
@@ -35,6 +45,8 @@ def getcert_user():
 
 	return getcert(hostname,ident)
 
+################################################################################
+
 @app.route('/getcert/vmid', methods=['POST'])
 def getcert_vuuid():
 	## Get a cert by passing in the VMware UUID
@@ -44,15 +56,14 @@ def getcert_vuuid():
 	ident    = request.form.get('ident','none')
 
 	## TODO authenticate the UUID
+	# abort with not yet implemented
 	abort(501)
 
 	## TODO authorise the UUID - e.g. check its hostname agains the hostname we got a request for
 
-	return getcert(hostname,ident)
+	#return getcert(hostname,ident)
 
-@app.route('/')
-def default():
-	abort(400)
+################################################################################
 
 @app.before_request
 def before_request():
@@ -61,11 +72,11 @@ def before_request():
 	## Load config for every request (so no reloads are required just for a config change)
 	try:
 		g.config = ConfigParser.RawConfigParser()
-		g.config.read(OPTIONS_FILE)
+		g.config.read(CONFIG_FILE)
 
 		## Diorite config
 		if not g.config.has_section('diorite'):
-			syslog.syslog("error: [diorite] section missing from diorite options file")
+			syslog.syslog("error: [diorite] section missing from config file")
 			abort(500)
 		else:
 			## try to load diorite settings. cfg_get loads from g.config. It accepts a default if no config was found, aborts if no config option is found
@@ -86,6 +97,11 @@ def before_request():
 				g.enc_url        = g.config.get('enc', 'url')
 				g.enc_auth_token = g.config.get('enc', 'auth_token')
 
+				if g.config.has_option('default_environment'):
+					g.default_env = g.config.get('enc', 'default_environment')
+				else:
+					g.default_env = 'production'
+
 				if g.config.has_option('enc', 'ssl_verify'):
 					g.enc_ssl_verify = g.config.getboolean('enc', 'ssl_verify')
 				else:
@@ -101,10 +117,19 @@ def before_request():
 		syslog.syslog("error: could not read from options file: " + str(ex))
 		abort(500)
 
+################################################################################
 		
 def getcert(hostname,ident):
+	"""Executes a command on the local system using subprocess Popen"""
+
 	## validate the certname 
 	if not is_valid_hostname(hostname):
+		syslog.syslog("Invalid hostname presented to diorite")
+		abort(400)
+
+	## validate the ident
+	if not is_valid_ident(ident):
+		syslog.syslog("Invalid ident presented to diorite")
 		abort(400)
 
 	## do all the files already exist for this cert name?
@@ -160,30 +185,43 @@ def getcert(hostname,ident):
 		abort(500)
 
 	## Tell an ENC endpoint (Cortex) that a node exists and so should have a record of it
-	## but only if we've been configured to do that
+	## but only if we've been configured to do that. It will return an environment which
+	## diorite uses to pick what data (options) to send to the client, if any.
 	if g.enc:
 		try:
 			r = requests.post(g.enc_url + '/' + hostname, data={'auth_token': g.enc_auth_token}, verify=g.enc_ssl_verify)
 
-			if not r.return_code in [200,201]:
-				syslog.syslog("warning: error code recieved from enc registration API: " + str(r.return_code))		
+			if not r.return_code == 200:
+				syslog.syslog("warning: error code recieved from ENC registration API: " + str(r.return_code))	
+			else:
+				## Get the yaml response which includes the environment to use
+				try:
+					response = yaml.load(r.text)
+					g.env    = response['environment']
+				except Exception as ex:
+					syslog.syslog("warning: could not decode yaml response from ENC registration API: " + str(ex))						
+					g.env = g.default_env						
+	
 		except Exception as ex:
 			syslog.syslog("warning: an error occured when contacting the enc: " + str(ex))
 
-	## Load in options from the options file. We silently fail here if something goes wrong.
+	## Load in options from the ident file. We silently fail here if something goes wrong.
 	try:
-		## don't allow the client to send 'diorite' and read diorite core configuration options
-		if not ident in ['diorite','enc']:
+		path = os.path.join(OPTIONS_DIR,ident + ".conf")
+		if os.path.exists(path):
 
-			## See if the config file has a section matching the supplied ident
-			if g.config.has_section(ident):
+			iconf = ConfigParser.RawConfigParser()
+			iconf.read(CONFIG_FILE)			
 
-				## It does! So load in the data to send to the client.
-				options = g.config.options(ident)
+			## Load the section for the environment chosen
+			if iconf.has_section(g.env):
+				options = iconf.options(g.env)
 				for opt in options:
 					# Don't overwrite puppet cert data
 					if opt not in ['public_key','cert','private_key']:
-						data[opt] = g.config.get(ident,opt)
+						data[opt] = iconf.get(g.env,opt)
+		else:
+			syslog.syslog("warning: no ident options file found for " + hostname)			
 
 	except Exception as ex:
 		syslog.syslog("warning: error loading options for client " + hostname + ":" + str(ex))
@@ -191,7 +229,10 @@ def getcert(hostname,ident):
 	## send results back as json
 	return jsonify(data)
 
+################################################################################
+
 def sysexec(command,shell=False):
+	"""Executes a command on the local system using subprocess Popen"""
 
 	try:
 		proc = subprocess.Popen(command,stdout=subprocess.PIPE, stderr=subprocess.STDOUT,shell=shell)
@@ -201,7 +242,11 @@ def sysexec(command,shell=False):
 		syslog.syslog("sysexec exception: " + str(ex))
 		return (1,"",str(ex))
 
+################################################################################
+
 def auth_user(username,password):
+	"""Authenticates a user using LDAP"""
+
 	if username == '':
 		syslog.syslog("username not sent")
 		return False
@@ -253,6 +298,8 @@ def auth_user(username,password):
 	syslog.syslog("catchall")
 	return False
 
+################################################################################
+
 def allowed_user(username):
 	try:
 		agrp = grp.getgrnam(g.access_group)
@@ -266,7 +313,8 @@ def allowed_user(username):
 	else:
 		syslog.syslog("denying access to non-authorised user " + username)
 		return False
-	
+
+################################################################################	
 
 def is_valid_hostname(hostname):
 	if len(hostname) > 255:
@@ -275,6 +323,14 @@ def is_valid_hostname(hostname):
 		hostname = hostname[:-1]
 	allowed = re.compile("(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
 	return all(allowed.match(x) for x in hostname.split("."))
+
+################################################################################
+
+def is_valid_ident(ident):
+	allowed = re.compile("^[A-Z\d_\-]{1,32}$",re.IGNORECASE)
+	return allowed.match(ident)
+
+################################################################################
 
 def cfg_get(section,key,default=None):
 	if g.config.has_option(section,key):
@@ -285,6 +341,8 @@ def cfg_get(section,key,default=None):
 		else:
 			syslog.syslog("missing configuration option in section [diorite]: " + key)
 			abort(500)
+
+################################################################################
 
 if __name__ == '__main__':
 	app.debug = True
