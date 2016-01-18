@@ -1,5 +1,5 @@
 #!/usr/bin/python
-# Version 2016-01-18-05
+# Version 2016-01-18-07
 
 CONFIG_FILE        = '/data/diorite/diorite.conf'
 OPTIONS_DIR        = '/data/diorite/options/'
@@ -220,10 +220,13 @@ def getcert(hostname,ident):
 			## Load the section for the environment chosen
 			if iconf.has_section(g.env):
 				options = iconf.options(g.env)
+				syslog.syslog("sending options as requested to " + hostname)			
 				for opt in options:
 					# Don't overwrite puppet cert data
 					if opt not in ['public_key','cert','private_key']:
 						data[opt] = iconf.get(g.env,opt)
+			else:
+				syslog.syslog("warning: no environment found within ident file " + path + " for " + hostname)							
 		else:
 			syslog.syslog("warning: no ident options file found for " + hostname)			
 
