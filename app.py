@@ -1,5 +1,5 @@
 #!/usr/bin/python
-# Version 2016-01-18-02
+# Version 2016-01-18-03
 
 CONFIG_FILE        = '/data/diorite/diorite.conf'
 OPTIONS_DIR        = '/data/diorite/options/'
@@ -89,6 +89,9 @@ def before_request():
 			g.ldap_user_attribute = cfg_get('diorite','ldap_user_attribute', 'cn')
 			g.access_group        = cfg_get('diorite','access_group','root')
 
+		## default env before we load a default from the config
+		g.env = 'production'
+
 		## ENC config
 		if g.config.has_section('enc'):
 			g.enc = True
@@ -97,10 +100,8 @@ def before_request():
 				g.enc_url        = g.config.get('enc', 'url')
 				g.enc_auth_token = g.config.get('enc', 'auth_token')
 
-				if g.config.has_option('default_environment'):
+				if g.config.has_option('enc', 'default_environment'):
 					g.env = g.config.get('enc', 'default_environment')
-				else:
-					g.env = 'production'
 
 				if g.config.has_option('enc', 'ssl_verify'):
 					g.enc_ssl_verify = g.config.getboolean('enc', 'ssl_verify')
