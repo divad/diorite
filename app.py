@@ -1,5 +1,5 @@
 #!/usr/bin/python
-# Version 2016-01-05-01
+# Version 2016-01-18-01
 
 CONFIG_FILE        = '/data/diorite/diorite.conf'
 OPTIONS_DIR        = '/data/diorite/options/'
@@ -98,9 +98,9 @@ def before_request():
 				g.enc_auth_token = g.config.get('enc', 'auth_token')
 
 				if g.config.has_option('default_environment'):
-					g.default_env = g.config.get('enc', 'default_environment')
+					g.env = g.config.get('enc', 'default_environment')
 				else:
-					g.default_env = 'production'
+					g.env = 'production'
 
 				if g.config.has_option('enc', 'ssl_verify'):
 					g.enc_ssl_verify = g.config.getboolean('enc', 'ssl_verify')
@@ -200,7 +200,6 @@ def getcert(hostname,ident):
 					g.env    = response['environment']
 				except Exception as ex:
 					syslog.syslog("warning: could not decode yaml response from ENC registration API: " + str(ex))						
-					g.env = g.default_env						
 	
 		except Exception as ex:
 			syslog.syslog("warning: an error occured when contacting the enc: " + str(ex))
