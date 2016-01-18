@@ -1,5 +1,5 @@
 #!/usr/bin/python
-# Version 2016-01-18-04
+# Version 2016-01-18-05
 
 CONFIG_FILE        = '/data/diorite/diorite.conf'
 OPTIONS_DIR        = '/data/diorite/options/'
@@ -193,13 +193,16 @@ def getcert(hostname,ident):
 			r = requests.post(g.enc_url + '/' + hostname, data={'auth_token': g.enc_auth_token}, verify=g.enc_ssl_verify)
 
 			if not r.status_code == 200:
-				syslog.syslog("warning: error code recieved from ENC registration API: " + str(r.return_code))	
+				syslog.syslog("warning: error code recieved from ENC registration API: " + str(r.status_code))	
 			else:
 				## Get the yaml response which includes the environment to use
 				try:
 					response = yaml.load(r.text)
-					syslog.syslog("enc returned the environment for " + hostname + " as " + str(response['environment']))
-					g.env    = response['environment']
+					if 'environment' in response:
+						syslog.syslog("enc returned the environment for " + hostname + " as " + str(response['environment']))
+						g.env    = response['environment']
+					else:
+						syslog.syslog("warning: environment not returned by ENC registration API")						
 				except Exception as ex:
 					syslog.syslog("warning: could not decode yaml response from ENC registration API: " + str(ex))						
 	
