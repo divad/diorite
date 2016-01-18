@@ -1,5 +1,5 @@
 #!/usr/bin/python
-# Version 2016-01-18-07
+# Version 2016-01-18-08
 
 CONFIG_FILE        = '/data/diorite/diorite.conf'
 OPTIONS_DIR        = '/data/diorite/options/'
@@ -226,9 +226,9 @@ def getcert(hostname,ident):
 					if opt not in ['public_key','cert','private_key']:
 						data[opt] = iconf.get(g.env,opt)
 			else:
-				syslog.syslog("warning: no environment found within ident file " + path + " for " + hostname)							
+				syslog.syslog("warning: I did not find the environment section [" + g.env + "] within ident file " + path + " for " + hostname)							
 		else:
-			syslog.syslog("warning: no ident options file found for " + hostname)			
+			syslog.syslog("warning: no ident options file found for " + hostname)
 
 	except Exception as ex:
 		syslog.syslog("warning: error loading options for client " + hostname + ":" + str(ex))
