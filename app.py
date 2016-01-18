@@ -1,5 +1,5 @@
 #!/usr/bin/python
-# Version 2016-01-18-08
+# Version 2016-01-18-09
 
 CONFIG_FILE        = '/data/diorite/diorite.conf'
 OPTIONS_DIR        = '/data/diorite/options/'
@@ -215,7 +215,7 @@ def getcert(hostname,ident):
 		if os.path.exists(path):
 
 			iconf = ConfigParser.RawConfigParser()
-			iconf.read(CONFIG_FILE)			
+			iconf.read(path)			
 
 			## Load the section for the environment chosen
 			if iconf.has_section(g.env):
