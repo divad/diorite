@@ -190,7 +190,7 @@ def getcert(hostname,ident):
 	## diorite uses to pick what data (options) to send to the client, if any.
 	if g.enc:
 		try:
-			r = requests.post(g.enc_url + '/' + hostname, data={'auth_token': g.enc_auth_token}, verify=g.enc_ssl_verify)
+			r = requests.get(g.enc_url + '/' + hostname, headers={'X-Auth-Token': g.enc_auth_token}, verify=g.enc_ssl_verify)
 
 			if not r.status_code == 200:
 				syslog.syslog("warning: error code recieved from ENC registration API: " + str(r.status_code))	
