@@ -1,6 +1,5 @@
 #!/usr/bin/python
-# Version 2016-01-18-09
-
+# Version 2016-02-05-02
 CONFIG_FILE        = '/data/diorite/diorite.conf'
 OPTIONS_DIR        = '/data/diorite/options/'
 
@@ -47,21 +46,33 @@ def getcert_user():
 
 ################################################################################
 
-@app.route('/getcert/vmid', methods=['POST'])
+@app.route('/getcert/vmauth', methods=['POST'])
 def getcert_vuuid():
 	## Get a cert by passing in the VMware UUID
-
 	hostname = request.form['hostname']
 	uuid     = request.form['uuid']
 	ident    = request.form.get('ident','none')
 
-	## TODO authenticate the UUID
-	# abort with not yet implemented
-	abort(501)
+	if not g.vmauth:
+		abort(501)
+	else:
+		try:
+			r = requests.get(g.vmauth_url + '/' + hostname + "/" + uuid, verify=g.enc_ssl_verify)
 
-	## TODO authorise the UUID - e.g. check its hostname agains the hostname we got a request for
+			if r.status_code == 200:
+				return getcert(hostname,ident)
+			
+			elif r.status_code == 404:
+				syslog.syslog("warning: vmauth says that the hostname/uuid pair was incorrect")
+				abort(403)
 
-	#return getcert(hostname,ident)
+			else:
+				syslog.syslog("warning: invalid response from vmauth server")
+				abort(500)
+
+		except Exception as ex:
+			syslog.syslog("warning: an error occured when contacting the enc: " + str(ex))
+			abort(500)
 
 ################################################################################
 
@@ -113,6 +124,24 @@ def before_request():
 				syslog.syslog("warning: could not read enc options, disabling enc updating: " + str(ex))
 		else:
 			g.enc = False
+
+		## VMUUID authentication
+		if g.config.has_section('vmauth'):
+			g.vmauth = True
+
+			try:
+				g.vmauth_url        = g.config.get('vmauth', 'url')
+
+				if g.config.has_option('vmauth', 'ssl_verify'):
+					g.vmauth_ssl_verify = g.config.getboolean('vmauth', 'ssl_verify')
+				else:
+					g.vmauth_ssl_verify = True
+
+			except Exception as ex:
+				g.vmauth = False
+				syslog.syslog("warning: could not read vmauth options, disabling vmauth support: " + str(ex))
+		else:
+			g.vmauth = False
 
 	except Exception as ex:
 		syslog.syslog("error: could not read from options file: " + str(ex))
@@ -243,7 +272,7 @@ def sysexec(command,shell=False):
 
 	try:
 		proc = subprocess.Popen(command,stdout=subprocess.PIPE, stderr=subprocess.STDOUT,shell=shell)
-		(stdoutdata, stderrdata) = proc.communicate()
+		(stdoutdata, stderrdata) = proc.communicate() 	
 		return (proc.returncode,str(stdoutdata),str(stderrdata))
 	except Exception as ex:
 		syslog.syslog("sysexec exception: " + str(ex))
