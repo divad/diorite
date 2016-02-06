@@ -1,5 +1,5 @@
 #!/usr/bin/python
-# Version 2016-02-05-02
+# Version 2016-02-06-01
 CONFIG_FILE        = '/data/diorite/diorite.conf'
 OPTIONS_DIR        = '/data/diorite/options/'
 
@@ -25,8 +25,8 @@ def default():
 
 ################################################################################
 
-@app.route('/getcert/user', methods=['POST'])
-def getcert_user():
+@app.route('/register/user', methods=['POST'])
+def register_by_user():
 	hostname = request.form['hostname']
 	username = request.form['username']
 	password = request.form['password']
@@ -42,12 +42,12 @@ def getcert_user():
 
 	syslog.syslog("received certificate request for " + hostname + " from authorised user " + username)
 
-	return getcert(hostname,ident)
+	return do_register(hostname,ident)
 
 ################################################################################
 
-@app.route('/getcert/vmauth', methods=['POST'])
-def getcert_vuuid():
+@app.route('/register/vmauth', methods=['POST'])
+def register_by_vmauth():
 	## Get a cert by passing in the VMware UUID
 	hostname = request.form['hostname']
 	uuid     = request.form['uuid']
@@ -60,7 +60,7 @@ def getcert_vuuid():
 			r = requests.get(g.vmauth_url + '/' + hostname + "/" + uuid, verify=g.enc_ssl_verify)
 
 			if r.status_code == 200:
-				return getcert(hostname,ident)
+				return do_register(hostname,ident)
 			
 			elif r.status_code == 404:
 				syslog.syslog("warning: vmauth says that the hostname/uuid pair was incorrect")
@@ -149,7 +149,7 @@ def before_request():
 
 ################################################################################
 		
-def getcert(hostname,ident):
+def do_register(hostname,ident):
 	"""Executes a command on the local system using subprocess Popen"""
 
 	## validate the certname 
