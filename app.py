@@ -15,12 +15,15 @@ import syslog
 import re
 import os.path
 import ConfigParser
+import traceback
+import logging
 
 ################################################################################
 
 app = Flask(__name__)
 app.config.from_object(__name__)
 app.config.from_pyfile(CONFIG_FILE,silent=True)
+app.logger.setLevel(logging.DEBUG)
 
 ################################################################################
 
