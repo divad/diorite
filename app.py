@@ -1,5 +1,5 @@
 #!/usr/bin/python
-# Version 2016-02-12-01
+# Version 2016-02-12-02
 CONFIG_FILE        = '/data/cortex/puppet-autosign.conf'
 PUPPET_BINARY      = '/opt/puppetlabs/bin/puppet'
 PUPPET_CONFDIR     = '/etc/puppetlabs/puppet/'
@@ -30,7 +30,7 @@ def default():
 
 ################################################################################
 
-@app.route('/getcert/<hostname>', methods=['POST'])
+@app.route('/getcert/<hostname>', methods=['GET'])
 def register_by_user(hostname):
 
 	if 'X-Auth-Token' not in request.headers:
