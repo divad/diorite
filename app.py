@@ -43,7 +43,7 @@ def register_by_user(hostname):
 		app.logger.warn('getcert request failed because the X-Auth-Token was incorrect')
 		abort(401)
 
-	return do_register(hostname,ident)
+	return getcert(hostname)
 
 ################################################################################
 
