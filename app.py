@@ -62,19 +62,19 @@ def getcert(hostname):
 		abort(400)
 
 	## do all the files already exist for this cert name?
-	if not all([os.path.exists(g.puppet_ssldir + "private_keys/" + hostname + ".pem"),
-			os.path.exists(g.puppet_ssldir + "public_keys/"  + hostname + ".pem"),
-			os.path.exists(g.puppet_ssldir + "ca/signed/"    + hostname + ".pem")]):
+	if not all([os.path.exists(app.config['PUPPET_SSLDIR'] + "private_keys/" + hostname + ".pem"),
+			os.path.exists(app.config['PUPPET_SSLDIR'] + "public_keys/"  + hostname + ".pem"),
+			os.path.exists(app.config['PUPPET_SSLDIR'] + "ca/signed/"    + hostname + ".pem")]):
 
 		## try to clean the cert but fail silently if it doesnt work
-		sysexec(g.puppet_binary + " cert --confdir " + g.puppet_confdir + " clean " + hostname,shell=True)
-		sysexec(g.puppet_binary + " cert --confdir " + g.puppet_confdir + " destroy " + hostname,shell=True)
-		sysexec(g.puppet_binary + " ca --confdir " + g.puppet_confdir + " destroy " + hostname,shell=True)
+		sysexec(app.config['PUPPET_BINARY'] + " cert --confdir " + app.config['PUPPET_CONFDIR'] + " clean " + hostname,shell=True)
+		sysexec(app.config['PUPPET_BINARY'] + " cert --confdir " + app.config['PUPPET_CONFDIR'] + " destroy " + hostname,shell=True)
+		sysexec(app.config['PUPPET_BINARY'] + " ca --confdir " + app.config['PUPPET_CONFDIR'] + " destroy " + hostname,shell=True)
 
 		syslog.syslog("generating new puppet certificate for " + hostname)
 
 		## puppet generate a new cert
-		(rcode, stdout, stderr) = sysexec(g.puppet_binary + " cert --confdir " + g.puppet_confdir + " generate " + hostname,shell=True)	
+		(rcode, stdout, stderr) = sysexec(app.config['PUPPET_BINARY'] + " cert --confdir " + app.config['PUPPET_CONFDIR'] + " generate " + hostname,shell=True)	
 
 		if rcode != 0:
 			syslog.syslog("puppet cert generate failed for hostname " + hostname)
@@ -89,7 +89,7 @@ def getcert(hostname):
 
 	## grab the contents of the files the client needs
 	try:
-		with open(g.puppet_ssldir + "public_keys/" + hostname + ".pem","r") as f:
+		with open(app.config['PUPPET_SSLDIR'] + "public_keys/" + hostname + ".pem","r") as f:
 			data['public_key'] = f.read()
 	except Exception as ex:
 		syslog.syslog("failed to read generated public key file for " + hostname)
@@ -97,7 +97,7 @@ def getcert(hostname):
 		abort(500)
 
 	try:
-		with open(g.puppet_ssldir + "ca/signed/" + hostname + ".pem","r") as f:
+		with open(app.config['PUPPET_SSLDIR'] + "ca/signed/" + hostname + ".pem","r") as f:
 			data['cert'] = f.read()
 	except Exception as ex:
 		syslog.syslog("failed to read generated certificate file for " + hostname)
@@ -105,7 +105,7 @@ def getcert(hostname):
 		abort(500)
 
 	try:
-		with open(g.puppet_ssldir + "private_keys/" + hostname + ".pem","r") as f:
+		with open(app.config['PUPPET_SSLDIR'] + "private_keys/" + hostname + ".pem","r") as f:
 			data['private_key'] = f.read()
 	except Exception as ex:
 		syslog.syslog("failed to read generated certificate file for " + hostname)
