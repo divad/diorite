@@ -177,7 +177,7 @@ Traceback:
 			debug,	
 		))
 
-	return "500 Internal Server Error"
+	return "500 Internal Server Error", 500
 
 ################################################################################
 
