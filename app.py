@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # Version 2016-02-12-02
-CONFIG_FILE        = '/data/cortex/puppet-autosign.conf'
+CONFIG_FILE        = '/data/cortex_puppet_autosign/cortex_puppet_autosign.conf'
 PUPPET_BINARY      = '/opt/puppetlabs/bin/puppet'
 PUPPET_CONFDIR     = '/etc/puppetlabs/puppet/'
 PUPPET_SSLDIR      = '/etc/puppetlabs/puppet/ssl/'
