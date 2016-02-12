@@ -139,5 +139,47 @@ def is_valid_hostname(hostname):
 
 ################################################################################
 
+@app.errorhandler(500)
+@app.errorhandler(Exception)
+def error500(error):
+	# Get exception traceback
+	if app.debug:
+		debug = traceback.format_exc()
+	else:
+		debug = None
+
+	## send a log about this
+	app.logger.error("""
+Exception Type:       %s
+Exception Message:    %s
+HTTP Path:            %s
+HTTP Method:          %s
+Client IP Address:    %s
+User Agent:           %s
+User Platform:        %s
+User Browser:         %s
+User Browser Version: %s
+
+Traceback:
+
+%s
+
+""" % (
+			str(type(error)),
+			error.__str__(),
+			request.path,
+			request.method,
+			request.remote_addr,
+			request.user_agent.string,
+			request.user_agent.platform,
+			request.user_agent.browser,
+			request.user_agent.version,
+			debug,	
+		))
+
+	return 
+
+################################################################################
+
 if __name__ == '__main__':
 	app.run()
