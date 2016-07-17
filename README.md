@@ -1,4 +1,4 @@
-# cortex-puppet-autosign
+# cortex-puppet-bridge
 
-__A puppet certificate authenticated signing system replacing standard autosign__
+__A bridge from Cortex to Puppet to allow Cortex to perform operations on a Puppet Master running on another server__
 
