@@ -1,6 +1,10 @@
 #!/usr/bin/python
-# Version 2016-02-12-02
-CONFIG_FILE        = '/data/cortex_puppet_autosign/cortex_puppet_autosign.conf'
+# Version 2016-07-19-01
+
+## the config file to load from
+CONFIG_FILE        = '/data/cortex-puppet-bridge/bridge.conf'
+
+## config defaults
 PUPPET_BINARY      = '/opt/puppetlabs/bin/puppet'
 PUPPET_CONFDIR     = '/etc/puppetlabs/puppet/'
 PUPPET_SSLDIR      = '/etc/puppetlabs/puppet/ssl/'
@@ -9,7 +13,7 @@ DEBUG              = False
 
 ## DO NOT EDIT PAST THIS LINE #################################################
 
-from flask import Flask, jsonify, abort, request, g
+from flask import Flask, jsonify, abort, request, g, make_response
 import subprocess
 import syslog
 import re
@@ -17,6 +21,7 @@ import os.path
 import ConfigParser
 import traceback
 import logging
+import yaml
 
 ################################################################################
 
@@ -33,6 +38,68 @@ def default():
 
 ################################################################################
 
+@app.route('/deactivatenode/<hostname>', methods=['GET'])
+def deactivate_node(hostname):
+
+	if 'X-Auth-Token' not in request.headers:
+		syslog.syslog("deactivatenode request failed because X-Auth-Token was missing from the request")
+		abort(401)
+	if request.headers['X-Auth-Token'] != app.config['AUTH_TOKEN']:
+		app.logger.warn("deactivatenode request failed because the X-Auth-Token was incorrect")
+		abort(401)
+
+	## validate the hostname
+	if not is_valid_hostname(hostname):
+		syslog.syslog("Invalid hostname in request")
+		abort(400)
+
+	## deactivate the puppet node
+	(rcode, stdout, stderr) = sysexec([app.config['PUPPET_BINARY'], "node", "--confdir", app.config['PUPPET_CONFDIR'], "deactivate", hostname], shell=False)
+
+	if rcode != 0:
+		syslog.syslog("puppet node deactivate failed for hostname " + hostname)
+		syslog.syslog("stdout: " + str(stdout))
+		syslog.syslog("stderr: " + str(stderr))
+		abort(500)
+	else:
+		syslog.syslog("puppet node with hostname " + hostname + " was deactivated")
+
+	# Return blank 200 OK response
+	return ""
+
+################################################################################
+
+@app.route('/cleannode/<hostname>', methods=['GET'])
+def clean_node(hostname):
+
+	if 'X-Auth-Token' not in request.headers:
+		syslog.syslog("cleannode request failed because X-Auth-Token was missing from the request")
+		abort(401)
+	if request.headers['X-Auth-Token'] != app.config['AUTH_TOKEN']:
+		app.logger.warn("cleannode request failed because the X-Auth-Token was incorrect")
+		abort(401)
+
+	## validate the hostname
+	if not is_valid_hostname(hostname):
+		syslog.syslog("Invalid hostname in request")
+		abort(400)
+
+	## clean the puppet node
+	(rcode, stdout, stderr) = sysexec([app.config['PUPPET_BINARY'], "node", "--confdir", app.config['PUPPET_CONFDIR'], "clean", hostname], shell=False)
+
+	if rcode != 0:
+		syslog.syslog("puppet node clean failed for hostname " + hostname)
+		syslog.syslog("stdout: " + str(stdout))
+		syslog.syslog("stderr: " + str(stderr))
+		abort(500)
+	else:
+		syslog.syslog("puppet node with hostname " + hostname + " was cleaned")
+
+	# Return blank 200 OK response
+	return ""
+
+################################################################################
+
 @app.route('/getcert/<hostname>', methods=['GET'])
 def register_by_user(hostname):
 
@@ -42,19 +109,6 @@ def register_by_user(hostname):
 	if request.headers['X-Auth-Token'] != app.config['AUTH_TOKEN']:
 		app.logger.warn('getcert request failed because the X-Auth-Token was incorrect')
 		abort(401)
-
-	return getcert(hostname)
-
-################################################################################
-
-@app.before_request
-def before_request():
-	syslog.openlog("cortex-puppet-autosign")
-
-################################################################################
-		
-def getcert(hostname):
-	"""Get a puppet SSL certficate bundle for a particular hostname"""
 
 	## validate the certname 
 	if not is_valid_hostname(hostname):
@@ -67,14 +121,14 @@ def getcert(hostname):
 			os.path.exists(app.config['PUPPET_SSLDIR'] + "ca/signed/"    + hostname + ".pem")]):
 
 		## try to clean the cert but fail silently if it doesnt work
-		sysexec(app.config['PUPPET_BINARY'] + " cert --confdir " + app.config['PUPPET_CONFDIR'] + " clean " + hostname,shell=True)
-		sysexec(app.config['PUPPET_BINARY'] + " cert --confdir " + app.config['PUPPET_CONFDIR'] + " destroy " + hostname,shell=True)
-		sysexec(app.config['PUPPET_BINARY'] + " ca --confdir " + app.config['PUPPET_CONFDIR'] + " destroy " + hostname,shell=True)
+		sysexec([app.config['PUPPET_BINARY'], "cert", "--confdir", app.config['PUPPET_CONFDIR'], "clean", hostname], shell=False)
+		sysexec([app.config['PUPPET_BINARY'], "cert", "--confdir", app.config['PUPPET_CONFDIR'], "destroy", hostname], shell=False)
+		sysexec([app.config['PUPPET_BINARY'], "ca", "--confdir", app.config['PUPPET_CONFDIR'], "destroy", hostname], shell=False)
 
 		syslog.syslog("generating new puppet certificate for " + hostname)
 
 		## puppet generate a new cert
-		(rcode, stdout, stderr) = sysexec(app.config['PUPPET_BINARY'] + " cert --confdir " + app.config['PUPPET_CONFDIR'] + " generate " + hostname,shell=True)	
+		(rcode, stdout, stderr) = sysexec([app.config['PUPPET_BINARY'], "cert", "--confdir", app.config['PUPPET_CONFDIR'], "generate", hostname], shell=False)
 
 		if rcode != 0:
 			syslog.syslog("puppet cert generate failed for hostname " + hostname)
@@ -114,6 +168,52 @@ def getcert(hostname):
 
 	## send results back as json
 	return jsonify(data)
+
+################################################################################
+
+@app.route('/modules', methods=['GET'])
+def modules_list():
+
+	if 'X-Auth-Token' not in request.headers:
+		syslog.syslog("modules request failed because X-Auth-Token was missing from the request")
+		abort(401)
+	if request.headers['X-Auth-Token'] != app.config['AUTH_TOKEN']:
+		app.logger.warn('modules request failed because the X-Auth-Token was incorrect')
+		abort(401)
+
+	## ask the puppet server for a list of modules
+	(rcode, stdout, stderr) = sysexec([app.config['PUPPET_BINARY'], "module", "--confdir", app.config['PUPPET_CONFDIR'], "list", "--render-as", "yaml"])	
+
+	if rcode != 0:
+		syslog.syslog("puppet module list failed")
+		syslog.syslog("stdout: " + str(stdout))
+		syslog.syslog("stderr: " + str(stderr))
+		abort(500)
+	else:
+		## Try to validate the YAML
+		try:
+			# work around the stupid ruby object shit in puppet yaml
+			yaml.add_multi_constructor(u"!ruby/object:", construct_ruby_object)
+			modules = yaml.load(stdout)
+		except yaml.YAMLError as ex:
+			syslog.syslog("puppet module list returned invalid YAML")
+			syslog.syslog("invalid YAML: " + stdout)
+			abort(500)
+
+		r = make_response(yaml.dump(modules))
+		r.headers['Content-Type'] = "application/x-yaml"
+		return r
+
+################################################################################
+
+def construct_ruby_object(loader, suffix, node):
+	return loader.construct_yaml_map(node)
+
+################################################################################
+
+@app.before_request
+def before_request():
+	syslog.openlog("cortex-puppet-bridge")
 
 ################################################################################
 
