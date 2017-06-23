@@ -182,7 +182,7 @@ def modules_list():
 		abort(401)
 
 	## ask the puppet server for a list of modules
-	(rcode, stdout, stderr) = sysexec([app.config['PUPPET_BINARY'], "module", "--confdir", app.config['PUPPET_CONFDIR'], "list", "--render-as", "yaml"])	
+	(rcode, stdout, stderr) = sysexec([app.config['PUPPET_BINARY'], "module", "--modulepath=" + app.config['PUPPET_MODULE_PATH'], "list", "--render-as", "yaml"])	
 
 	if rcode != 0:
 		syslog.syslog("puppet module list failed")
