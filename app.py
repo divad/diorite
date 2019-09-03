@@ -6,6 +6,7 @@ CONFIG_FILE        = '/data/cortex-puppet-bridge/bridge.conf'
 
 ## config defaults
 PUPPET_BINARY      = '/opt/puppetlabs/bin/puppet'
+PUPPETSRV_BINARY   = '/opt/puppetlabs/bin/puppetserver'
 PUPPET_CONFDIR     = '/etc/puppetlabs/puppet/'
 PUPPET_SSLDIR      = '/etc/puppetlabs/puppet/ssl/'
 AUTH_TOKEN         = 'changeme'
@@ -110,6 +111,12 @@ def register_by_user(hostname):
 		app.logger.warn('getcert request failed because the X-Auth-Token was incorrect')
 		abort(401)
 
+	try:
+		puppet_version = get_puppet_version()
+	except Exception as e:
+		syslog.syslog('Failed to get Puppet version ' + str(e))
+		abort(500)
+
 	## validate the certname 
 	if not is_valid_hostname(hostname):
 		syslog.syslog("Invalid hostname in request")
@@ -121,14 +128,20 @@ def register_by_user(hostname):
 			os.path.exists(app.config['PUPPET_SSLDIR'] + "ca/signed/"    + hostname + ".pem")]):
 
 		## try to clean the cert but fail silently if it doesnt work
-		sysexec([app.config['PUPPET_BINARY'], "cert", "--confdir", app.config['PUPPET_CONFDIR'], "clean", hostname], shell=False)
-		sysexec([app.config['PUPPET_BINARY'], "cert", "--confdir", app.config['PUPPET_CONFDIR'], "destroy", hostname], shell=False)
-		sysexec([app.config['PUPPET_BINARY'], "ca", "--confdir", app.config['PUPPET_CONFDIR'], "destroy", hostname], shell=False)
+		if puppet_version[0] <= 4:
+			sysexec([app.config['PUPPET_BINARY'], "cert", "--confdir", app.config['PUPPET_CONFDIR'], "clean", hostname], shell=False)
+			sysexec([app.config['PUPPET_BINARY'], "cert", "--confdir", app.config['PUPPET_CONFDIR'], "destroy", hostname], shell=False)
+			sysexec([app.config['PUPPET_BINARY'], "ca", "--confdir", app.config['PUPPET_CONFDIR'], "destroy", hostname], shell=False)
+		else:
+			sysexec([app.config['PUPPETSRV_BINARY'], "ca", "clean", "--config", os.path.join(app.config['PUPPET_CONFDIR'], "puppet.conf"), "--certname", hostname], shell=False)
 
 		syslog.syslog("generating new puppet certificate for " + hostname)
 
 		## puppet generate a new cert
-		(rcode, stdout, stderr) = sysexec([app.config['PUPPET_BINARY'], "cert", "--confdir", app.config['PUPPET_CONFDIR'], "generate", hostname], shell=False)
+		if puppet_version[0] <= 4:
+			(rcode, stdout, stderr) = sysexec([app.config['PUPPET_BINARY'], "cert", "--confdir", app.config['PUPPET_CONFDIR'], "generate", hostname], shell=False)
+		else:
+			(rcode, stdout, stderr) = sysexec([app.config['PUPPETSRV_BINARY'], "ca", "generate", "--config", os.path.join(app.config['PUPPET_CONFDIR'], "puppet.conf"), "--certname", hostname], shell=False)
 
 		if rcode != 0:
 			syslog.syslog("puppet cert generate failed for hostname " + hostname)
@@ -203,6 +216,21 @@ def modules_list():
 		r = make_response(yaml.dump(modules))
 		r.headers['Content-Type'] = "application/x-yaml"
 		return r
+
+################################################################################
+
+def get_puppet_version():
+	(ret, out, err) = sysexec([app.config['PUPPET_BINARY'], '--version'], shell=False)
+
+	if ret == 0:
+		version_string_re = re.compile('(?P<major>[0-9]+)\.(?P<minor>[0-9]+)\.(?P<patch>[0-9]+)')
+		version_string = version_string_re.match(out.strip())
+		if version_string is not None:
+			return (int(version_string.group('major')), int(version_string.group('minor')), int(version_string.group('patch')))
+		else:
+			raise Exception('Failed to parse Puppet version string')
+	else:
+		raise Exception('Error running Puppet to get Puppet version')
 
 ################################################################################
 
