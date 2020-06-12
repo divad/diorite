@@ -5,12 +5,13 @@
 CONFIG_FILE        = '/data/cortex-puppet-bridge/bridge.conf'
 
 ## config defaults
-PUPPET_BINARY      = '/opt/puppetlabs/bin/puppet'
-PUPPETSRV_BINARY   = '/opt/puppetlabs/bin/puppetserver'
-PUPPET_CONFDIR     = '/etc/puppetlabs/puppet/'
-PUPPET_SSLDIR      = '/etc/puppetlabs/puppet/ssl/'
-AUTH_TOKEN         = 'changeme'
-DEBUG              = False
+PUPPET_BINARY            = '/opt/puppetlabs/bin/puppet'
+PUPPETSRV_BINARY         = '/opt/puppetlabs/bin/puppetserver'
+PUPPET_CONFDIR           = '/etc/puppetlabs/puppet/'
+PUPPET_SSLDIR            = '/etc/puppetlabs/puppet/ssl/'
+PUPPET_ENVIRONMENTS_BASE = '/etc/puppetlabs/code/environments'
+AUTH_TOKEN               = 'changeme'
+DEBUG                    = False
 
 ## DO NOT EDIT PAST THIS LINE #################################################
 
@@ -23,6 +24,7 @@ import ConfigParser
 import traceback
 import logging
 import yaml
+import datetime
 
 ################################################################################
 
@@ -30,6 +32,10 @@ app = Flask(__name__)
 app.config.from_object(__name__)
 app.config.from_pyfile(CONFIG_FILE,silent=True)
 app.logger.setLevel(logging.DEBUG)
+
+################################################################################
+
+ENVIRONMENT_NAME_REGEX = re.compile(r"\A[a-z0-9_]+\Z")
 
 ################################################################################
 
@@ -216,6 +222,51 @@ def modules_list():
 		r = make_response(yaml.dump(modules))
 		r.headers['Content-Type'] = "application/x-yaml"
 		return r
+
+################################################################################
+
+@app.route('/environment/create', methods=['POST'])
+def environment_create():
+
+	if 'X-Auth-Token' not in request.headers:
+		syslog.syslog("environment create request failed because X-Auth-Token was missing from the request")
+		abort(401)
+	if request.headers['X-Auth-Token'] != app.config['AUTH_TOKEN']:
+		app.logger.warn('environment create request failed because the X-Auth-Token was incorrect')
+		abort(401)
+
+	app.logger.info("TEST")
+	app.logger.info(request.json)
+	if not all(k in request.json for k in ["username", "environment_name"]):
+		app.logger.warn('environment create request failed because the request was invalid')
+		abort(400)
+
+	base_dir = app.config["PUPPET_ENVIRONMENTS_BASE"]
+	if not os.path.isdir(base_dir):
+		app.logger.error('environment create request failed because the PUPPET_ENVIRONMENTS_BASE doesn\'t exist')
+		abort(500)
+
+	if not ENVIRONMENT_NAME_REGEX.match(request.json.get("environment_name", "")):
+		app.logger.warn('environment create request failed because the environment_name is invalid')
+		abort(400)
+
+	environment_path = os.path.join(base_dir, request.json["environment_name"])
+	os.mkdir(environment_path)
+	os.mkdir(os.path.join(environment_path, "hieradata"))
+	os.mkdir(os.path.join(environment_path, "manifests"))
+	os.mkdir(os.path.join(environment_path, "modules"))
+
+	with open(os.path.join(environment_path, "environment.conf"), "w") as fp:
+		fp.write("""# Cortex Created Puppet Environment
+#
+# Name: {name}
+# Created by: {username}
+# Created On: {date}
+# See: https://puppet.com/docs/puppet/latest/config_file_environment.html
+""".format(name=request.json["environment_name"], username=request.json["username"], date=datetime.datetime.now().isoformat()))
+
+	return jsonify({}), 200
+
 
 ################################################################################
 
