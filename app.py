@@ -20,6 +20,7 @@ import subprocess
 import syslog
 import re
 import os.path
+import shutil
 import ConfigParser
 import traceback
 import logging
@@ -235,8 +236,6 @@ def environment_create():
 		app.logger.warn('environment create request failed because the X-Auth-Token was incorrect')
 		abort(401)
 
-	app.logger.info("TEST")
-	app.logger.info(request.json)
 	if not all(k in request.json for k in ["username", "environment_name"]):
 		app.logger.warn('environment create request failed because the request was invalid')
 		abort(400)
@@ -264,6 +263,42 @@ def environment_create():
 # Created On: {date}
 # See: https://puppet.com/docs/puppet/latest/config_file_environment.html
 """.format(name=request.json["environment_name"], username=request.json["username"], date=datetime.datetime.now().isoformat()))
+
+	return jsonify({}), 200
+
+################################################################################
+
+@app.route('/environment/delete', methods=['POST'])
+def environment_delete():
+
+	if 'X-Auth-Token' not in request.headers:
+		syslog.syslog("environment delete request failed because X-Auth-Token was missing from the request")
+		abort(401)
+	if request.headers['X-Auth-Token'] != app.config['AUTH_TOKEN']:
+		app.logger.warn('environment delete request failed because the X-Auth-Token was incorrect')
+		abort(401)
+
+	if not all(k in request.json for k in ["username", "environment_name"]):
+		app.logger.warn('environment delete request failed because the request was invalid')
+		abort(400)
+
+	base_dir = app.config["PUPPET_ENVIRONMENTS_BASE"]
+	if not os.path.isdir(base_dir):
+		app.logger.error('environment delete request failed because the PUPPET_ENVIRONMENTS_BASE doesn\'t exist')
+		abort(500)
+
+	if not ENVIRONMENT_NAME_REGEX.match(request.json.get("environment_name", "")):
+		app.logger.warn('environment delete request failed because the environment_name is invalid')
+		abort(400)
+
+	# Sanity check
+	environment_path = os.path.join(base_dir, request.json["environment_name"])
+	if not request.json["environment_name"] or os.path.realpath(environment_path) == base_dir:
+		app.logger.error('environment delete request failed because an invalid path was provided')
+		abort(400)
+	else:
+		app.logger.info('deleting environment {name} request received from user: {user}'.format(name=environment_path, user=request.json["username"]))
+		shutil.rmtree(environment_path)
 
 	return jsonify({}), 200
 
