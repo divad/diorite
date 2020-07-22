@@ -10,6 +10,11 @@ PUPPETSRV_BINARY         = '/opt/puppetlabs/bin/puppetserver'
 PUPPET_CONFDIR           = '/etc/puppetlabs/puppet/'
 PUPPET_SSLDIR            = '/etc/puppetlabs/puppet/ssl/'
 PUPPET_ENVIRONMENTS_BASE = '/etc/puppetlabs/code/environments'
+PUPPET_USER              = 'puppet'
+PUPPET_GROUP             = 'puppet'
+SAMBA_CONFIG_DIR         = '/etc/samba/conf.d'
+SAMBA_BUILD_CMD          = ['/usr/sbin/samba_build_confd']
+SAMBA_RESTART_CMD        = ['/usr/bin/systemctl', 'reload', 'smb']
 AUTH_TOKEN               = 'changeme'
 DEBUG                    = False
 
@@ -26,6 +31,8 @@ import traceback
 import logging
 import yaml
 import datetime
+import pwd
+import grp
 
 ################################################################################
 
@@ -33,6 +40,11 @@ app = Flask(__name__)
 app.config.from_object(__name__)
 app.config.from_pyfile(CONFIG_FILE,silent=True)
 app.logger.setLevel(logging.DEBUG)
+
+################################################################################
+
+PUPPET_UID = pwd.getpwnam(PUPPET_USER).pw_uid
+PUPPET_GID = grp.getgrnam(PUPPET_GROUP).gr_gid
 
 ################################################################################
 
@@ -249,12 +261,24 @@ def environment_create():
 		app.logger.warn('environment create request failed because the environment_name is invalid')
 		abort(400)
 
+	samba_config_dir = app.config["SAMBA_CONFIG_DIR"]
+	if not os.path.isdir(samba_config_dir):
+		app.logger.error('environment create request failed because the SAMBA_CONFIG_DIR doesn\'t exist')
+		abort(500)
+
 	environment_path = os.path.join(base_dir, request.json["environment_name"])
 	os.mkdir(environment_path)
+	os.chown(environment_path, PUPPET_UID, PUPPET_GID)
 	os.mkdir(os.path.join(environment_path, "hieradata"))
+	os.chown(os.path.join(environment_path, "hieradata"), PUPPET_UID, PUPPET_GID)
 	os.mkdir(os.path.join(environment_path, "manifests"))
+	os.chown(os.path.join(environment_path, "manifests"), PUPPET_UID, PUPPET_GID)
 	os.mkdir(os.path.join(environment_path, "modules"))
+	os.chown(os.path.join(environment_path, "modules"), PUPPET_UID, PUPPET_GID)
 
+	now = datetime.datetime.now().isoformat()
+
+	# Create environment.conf inside the environment
 	with open(os.path.join(environment_path, "environment.conf"), "w") as fp:
 		fp.write("""# Cortex Created Puppet Environment
 #
@@ -262,7 +286,36 @@ def environment_create():
 # Created by: {username}
 # Created On: {date}
 # See: https://puppet.com/docs/puppet/latest/config_file_environment.html
-""".format(name=request.json["environment_name"], username=request.json["username"], date=datetime.datetime.now().isoformat()))
+""".format(name=request.json["environment_name"], username=request.json["username"], date=now))
+
+	os.chown(os.path.join(environment_path, "environment.conf"), PUPPET_UID, PUPPET_GID)
+
+	# Create a samba config
+	with open(os.path.join(samba_config_dir, "ctx-env-{}.conf".format(request.json["environment_name"])), "w") as fp:
+		fp.write("""# Cortex Created Puppet Environment
+#
+# Name: {name}
+# Created by: {username}
+# Created On: {date}
+[env-{name}]
+path = {path}
+force user = puppet
+force group = puppet
+valid users = +srvadm {username}
+browseable = no
+writeable = yes
+""".format(name=request.json["environment_name"], username=request.json["username"], date=now, path=environment_path))
+
+	(rc, _, _) = sysexec(app.config["SAMBA_BUILD_CMD"], shell=False)
+	if rc != 0:
+		app.logger.error('environment create request failed because the samba build cmd failed: rc: %s', rc)
+		abort(500)
+
+
+	(rc, _, _) = sysexec(app.config["SAMBA_RESTART_CMD"], shell=False)
+	if rc != 0:
+		app.logger.error('environment create request failed because the samba restart cmd failed: rc: %s', rc)
+		abort(500)
 
 	return jsonify({}), 200
 
@@ -291,6 +344,12 @@ def environment_delete():
 		app.logger.warn('environment delete request failed because the environment_name is invalid')
 		abort(400)
 
+	samba_config_dir = app.config["SAMBA_CONFIG_DIR"]
+	if not os.path.isdir(samba_config_dir):
+		app.logger.error('environment create request failed because the SAMBA_CONFIG_DIR doesn\'t exist')
+		abort(500)
+
+
 	# Sanity check
 	environment_path = os.path.join(base_dir, request.json["environment_name"])
 	if not request.json["environment_name"] or os.path.realpath(environment_path) == base_dir:
@@ -299,6 +358,20 @@ def environment_delete():
 	else:
 		app.logger.info('deleting environment {name} request received from user: {user}'.format(name=environment_path, user=request.json["username"]))
 		shutil.rmtree(environment_path)
+
+	# Remove the samba config
+	os.remove(os.path.join(samba_config_dir, "ctx-env-{}.conf".format(request.json["environment_name"])))
+
+	(rc, _, _) = sysexec(app.config["SAMBA_BUILD_CMD"], shell=False)
+	if rc != 0:
+		app.logger.error('environment create request failed because the samba build cmd failed: rc: %s', rc)
+		abort(500)
+
+	(rc, _, _) = sysexec(app.config["SAMBA_RESTART_CMD"], shell=False)
+	if rc != 0:
+		app.logger.error('environment create request failed because the samba restart cmd failed: rc: %s', rc)
+		abort(500)
+
 
 	return jsonify({}), 200
 
