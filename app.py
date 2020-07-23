@@ -355,12 +355,16 @@ def environment_delete():
 	if not request.json["environment_name"] or os.path.realpath(environment_path) == base_dir:
 		app.logger.error('environment delete request failed because an invalid path was provided')
 		abort(400)
-	else:
+
+	# Remove environment folder
+	if os.path.isdir(environment_path):
 		app.logger.info('deleting environment {name} request received from user: {user}'.format(name=environment_path, user=request.json["username"]))
 		shutil.rmtree(environment_path)
 
 	# Remove the samba config
-	os.remove(os.path.join(samba_config_dir, "ctx-env-{}.conf".format(request.json["environment_name"])))
+	samba_config_file = os.path.join(samba_config_dir, "ctx-env-{}.conf".format(request.json["environment_name"]))
+	if os.path.isfile(samba_config_file):
+		os.remove(samba_config_file)
 
 	(rc, _, _) = sysexec(app.config["SAMBA_BUILD_CMD"], shell=False)
 	if rc != 0:
