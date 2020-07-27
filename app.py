@@ -282,11 +282,11 @@ def environment_create():
 	with open(os.path.join(environment_path, "environment.conf"), "w") as fp:
 		fp.write("""# Cortex Created Puppet Environment
 #
-# Name: {name}
+# Name: {name} ({short_name})
 # Created by: {username}
 # Created On: {date}
 # See: https://puppet.com/docs/puppet/latest/config_file_environment.html
-""".format(name=request.json["environment_name"], username=request.json["username"], date=now))
+""".format(name=request.json["environment_name"], short_name=request.json["environment_short_name"], username=request.json["username"], date=now))
 
 	os.chown(os.path.join(environment_path, "environment.conf"), PUPPET_UID, PUPPET_GID)
 
@@ -294,17 +294,18 @@ def environment_create():
 	with open(os.path.join(samba_config_dir, "ctx-env-{}.conf".format(request.json["environment_name"])), "w") as fp:
 		fp.write("""# Cortex Created Puppet Environment
 #
-# Name: {name}
+# Name: {name} ({short_name})
 # Created by: {username}
 # Created On: {date}
 [env-{name}]
 path = {path}
+comment = {short_name}
 force user = puppet
 force group = puppet
 valid users = +srvadm {username}
-browseable = no
+browseable = yes
 writeable = yes
-""".format(name=request.json["environment_name"], username=request.json["username"], date=now, path=environment_path))
+""".format(name=request.json["environment_name"], short_name=request.json["environment_short_name"], username=request.json["username"], date=now, path=environment_path))
 
 	(rc, _, _) = sysexec(app.config["SAMBA_BUILD_CMD"], shell=False)
 	if rc != 0:
