@@ -290,9 +290,10 @@ def environment_create():
 
 	os.chown(os.path.join(environment_path, "environment.conf"), PUPPET_UID, PUPPET_GID)
 
-	# Create a samba config
-	with open(os.path.join(samba_config_dir, "ctx-env-{}.conf".format(request.json["environment_name"])), "w") as fp:
-		fp.write("""# Cortex Created Puppet Environment
+	if request.json["username"]:
+		# Create a samba config
+		with open(os.path.join(samba_config_dir, "ctx-env-{}.conf".format(request.json["environment_name"])), "w") as fp:
+			fp.write("""# Cortex Created Puppet Environment
 #
 # Name: {name} ({short_name})
 # Created by: {username}
@@ -307,16 +308,16 @@ browseable = yes
 writeable = yes
 """.format(name=request.json["environment_name"], short_name=request.json["environment_short_name"], username=request.json["username"], date=now, path=environment_path))
 
-	(rc, _, _) = sysexec(app.config["SAMBA_BUILD_CMD"], shell=False)
-	if rc != 0:
-		app.logger.error('environment create request failed because the samba build cmd failed: rc: %s', rc)
-		abort(500)
+		(rc, _, _) = sysexec(app.config["SAMBA_BUILD_CMD"], shell=False)
+		if rc != 0:
+			app.logger.error('environment create request failed because the samba build cmd failed: rc: %s', rc)
+			abort(500)
 
 
-	(rc, _, _) = sysexec(app.config["SAMBA_RESTART_CMD"], shell=False)
-	if rc != 0:
-		app.logger.error('environment create request failed because the samba restart cmd failed: rc: %s', rc)
-		abort(500)
+		(rc, _, _) = sysexec(app.config["SAMBA_RESTART_CMD"], shell=False)
+		if rc != 0:
+			app.logger.error('environment create request failed because the samba restart cmd failed: rc: %s', rc)
+			abort(500)
 
 	return jsonify({}), 200
 
