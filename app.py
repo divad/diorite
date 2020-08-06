@@ -288,7 +288,8 @@ def environment_create():
 # See: https://puppet.com/docs/puppet/latest/config_file_environment.html
 """.format(name=request.json["environment_name"], short_name=request.json["environment_short_name"], username=request.json["username"], date=now))
 
-	os.chown(os.path.join(environment_path, "environment.conf"), PUPPET_UID, PUPPET_GID)
+	# Make sure the environment.conf is owned by root!
+	os.chown(os.path.join(environment_path, "environment.conf"), 0, 0)
 
 	if request.json["username"]:
 		# Create a samba config
